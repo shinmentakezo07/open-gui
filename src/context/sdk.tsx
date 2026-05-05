@@ -55,15 +55,29 @@ function init() {
     if (!obj || typeof obj !== "object") return obj
 
     const wrapped: any = {}
-    for (const key of Object.keys(obj)) {
-      const value = obj[key]
+    const keys = new Set([
+      ...Object.getOwnPropertyNames(obj),
+      ...Object.getOwnPropertyNames(Object.getPrototypeOf(obj) || {}),
+    ])
+    for (const key of keys) {
+      if (key === "constructor") continue
+      const descriptor =
+        Object.getOwnPropertyDescriptor(obj, key) ||
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(obj) || {}, key)
+      if (!descriptor) continue
       const currentPath = path ? `${path}.${key}` : key
-      if (typeof value === "function") {
-        wrapped[key] = wrapMethod(value.bind(obj), currentPath)
-      } else if (value && typeof value === "object" && !Array.isArray(value)) {
-        wrapped[key] = wrapObject(value, currentPath)
+      if (typeof descriptor.value === "function") {
+        wrapped[key] = wrapMethod(descriptor.value.bind(obj), currentPath)
+      } else if (descriptor.get) {
+        Object.defineProperty(wrapped, key, {
+          get: () => wrapObject(descriptor.get!.call(obj), currentPath),
+          enumerable: descriptor.enumerable,
+          configurable: descriptor.configurable,
+        })
+      } else if (descriptor.value && typeof descriptor.value === "object" && !Array.isArray(descriptor.value)) {
+        wrapped[key] = wrapObject(descriptor.value, currentPath)
       } else {
-        wrapped[key] = value
+        wrapped[key] = descriptor.value
       }
     }
     return wrapped
