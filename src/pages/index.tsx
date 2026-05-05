@@ -244,10 +244,23 @@ export default function Page() {
 
   return (
     <div class="relative bg-background min-h-screen">
+      <Show when={!sdk.connected()}>
+        <div class="fixed top-0 left-0 right-0 z-[100] bg-destructive/90 text-destructive-foreground px-3 py-1.5 text-xs flex items-center justify-center gap-2">
+          <Icon name="warning" size={12} />
+          <span>Disconnected from Opencode server</span>
+          <button
+            onClick={sdk.clearErrors}
+            class="underline hover:no-underline ml-2"
+          >
+            Retry
+          </button>
+        </div>
+      </Show>
+
       {/* LEFT SIDEBAR */}
       <div
         class="fixed top-0 left-0 h-full border-r border-border-subtle flex flex-col overflow-hidden bg-background z-10"
-        style={`width: ${local.layout.leftWidth()}px`}
+        style={`width: ${local.layout.leftWidth()}px; ${!sdk.connected() ? 'padding-top: 28px;' : ''}`}
       >
         {/* Project Header */}
         <div class="shrink-0 px-3 py-3 border-b border-border-subtle">

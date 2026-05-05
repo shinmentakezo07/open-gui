@@ -252,14 +252,11 @@ function UserMessage(props: { text: string; timestamp: number; username?: string
   )
 }
 
-function AgentMessage(props: { text: string; children?: ParentProps["children"] }) {
+function AgentMessage(props: { children?: ParentProps["children"] }) {
   return (
     <div class="flex gap-2.5 mb-5">
       <AgentAvatar />
       <div class="flex-1 min-w-0 flex flex-col gap-1">
-        <div class="text-[13px] text-text leading-relaxed">
-          <Markdown text={props.text} />
-        </div>
         {props.children}
       </div>
     </div>
@@ -427,24 +424,27 @@ export default function SessionTimeline(props: { session: string; class?: string
                   </For>
                 </Match>
                 <Match when={!isUser}>
-                  <AgentMessage 
-                    text={parts.find((p): p is typeof p & { type: "text"; text: string } => p.type === "text" && "text" in p)?.text || ""}
-                  >
+                  <AgentMessage>
                     <For each={parts}>
                       {(part) => (
                         <Switch>
+                          <Match when={part.type === "text" && part}>
+                            {(textPart) => (
+                              <div class="text-[13px] text-text leading-relaxed">
+                                <Markdown text={textPart().text} />
+                              </div>
+                            )}
+                          </Match>
                           <Match when={part.type === "reasoning" && part}>
                             {(reasoningPart) => (
-                              <ThinkingBlock 
-                                text={reasoningPart().text} 
+                              <ThinkingBlock
+                                text={reasoningPart().text}
                                 duration={duration(reasoningPart()) || undefined}
                               />
                             )}
                           </Match>
                           <Match when={part.type === "tool" && part}>
-                            {(toolPart) => (
-                              <ToolPart part={toolPart()} />
-                            )}
+                            {(toolPart) => <ToolPart part={toolPart()} />}
                           </Match>
                         </Switch>
                       )}

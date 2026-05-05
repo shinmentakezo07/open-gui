@@ -23,8 +23,10 @@ function init() {
         bus.emit(event)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error("Event stream error:", message)
+      if (active) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error("Event stream error:", message)
+      }
     }
 
     if (active) {

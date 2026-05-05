@@ -29,33 +29,47 @@ function init() {
     baseUrl: `http://${host}:${port}`,
   })
 
-  const trackedClient = new Proxy(client, {
-    get(target, prop) {
-      const value = (target as any)[prop]
-      if (typeof value === "function") {
-        return async (...args: any[]) => {
-          try {
-            const result = await value.apply(target, args)
-            if (!connected()) setConnected(true)
-            return result
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err)
-            const isConnectionError =
-              message.includes("fetch") ||
-              message.includes("network") ||
-              message.includes("ECONNREFUSED") ||
-              message.includes("Failed to fetch")
-            addError({
-              type: isConnectionError ? "connection" : "request",
-              message,
-            })
-            throw err
-          }
-        }
+  const wrapMethod = (fn: Function, path: string): any => {
+    return async (...args: any[]) => {
+      try {
+        const result = await fn(...args)
+        if (!connected()) setConnected(true)
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const isConnectionError =
+          message.includes("fetch") ||
+          message.includes("network") ||
+          message.includes("ECONNREFUSED") ||
+          message.includes("Failed to fetch")
+        addError({
+          type: isConnectionError ? "connection" : "request",
+          message: `${path}: ${message}`,
+        })
+        throw err
       }
-      return value
-    },
-  })
+    }
+  }
+
+  const wrapObject = (obj: any, path: string): any => {
+    if (!obj || typeof obj !== "object") return obj
+
+    const wrapped: any = {}
+    for (const key of Object.keys(obj)) {
+      const value = obj[key]
+      const currentPath = path ? `${path}.${key}` : key
+      if (typeof value === "function") {
+        wrapped[key] = wrapMethod(value.bind(obj), currentPath)
+      } else if (value && typeof value === "object" && !Array.isArray(value)) {
+        wrapped[key] = wrapObject(value, currentPath)
+      } else {
+        wrapped[key] = value
+      }
+    }
+    return wrapped
+  }
+
+  const trackedClient = wrapObject(client, "")
 
   return {
     client: trackedClient as typeof client,
