@@ -25,6 +25,15 @@ export type LocalModel = Omit<Model, "provider"> & {
 }
 export type ModelKey = { providerID: string; modelID: string }
 
+function safeParseJSON<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
 function init() {
   const sdk = useSDK()
   const sync = useSync()
@@ -34,21 +43,25 @@ function init() {
     const [store, setStore] = createStore<{
       current: string
     }>({
-      current: list()[0].name,
+      current: list()[0]?.name ?? "",
     })
     return {
       list,
       current() {
-        return list().find((x) => x.name === store.current)!
+        return list().find((x) => x.name === store.current)
       },
       set(name: string | undefined) {
-        setStore("current", name ?? list()[0].name)
+        const agents = list()
+        if (agents.length === 0) return
+        setStore("current", name ?? agents[0].name)
       },
       move(direction: 1 | -1) {
-        let next = list().findIndex((x) => x.name === store.current) + direction
-        if (next < 0) next = list().length - 1
-        if (next >= list().length) next = 0
-        const value = list()[next]
+        const agents = list()
+        if (agents.length === 0) return
+        let next = agents.findIndex((x) => x.name === store.current) + direction
+        if (next < 0) next = agents.length - 1
+        if (next >= agents.length) next = 0
+        const value = agents[next]
         setStore("current", value.name)
         if (value.model)
           model.set({
@@ -63,18 +76,17 @@ function init() {
     const list = createMemo(() =>
       sync.data.provider.flatMap((p) => Object.values(p.models).map((m) => ({ ...m, provider: p }) as LocalModel)),
     )
-    const find = (key: ModelKey) => list().find((m) => m.id === key?.modelID && m.provider.id === key.providerID)
+    const find = (key: ModelKey | undefined) =>
+      key ? list().find((m) => m.id === key.modelID && m.provider.id === key.providerID) : undefined
 
     const [store, setStore] = createStore<{
       model: Record<string, ModelKey>
       recent: ModelKey[]
     }>({
       model: {},
-      recent: [],
+      recent: safeParseJSON(localStorage.getItem("model"), []),
     })
 
-    const value = localStorage.getItem("model")
-    setStore("recent", JSON.parse(value ?? "[]"))
     createEffect(() => {
       localStorage.setItem("model", JSON.stringify(store.recent))
     })
@@ -82,24 +94,31 @@ function init() {
     const fallback = createMemo(() => {
       if (store.recent.length) return store.recent[0]
       const provider = sync.data.provider[0]
+      if (!provider) return undefined
       const model = Object.values(provider.models)[0]
+      if (!model) return undefined
       return { modelID: model.id, providerID: provider.id }
     })
 
     const current = createMemo(() => {
       const a = agent.current()
-      return find(store.model[agent.current().name]) ?? find(a.model ?? fallback())
+      const agentKey = a ? store.model[a.name] : undefined
+      return find(agentKey) ?? find(a?.model) ?? find(fallback())
     })
 
-    const recent = createMemo(() => store.recent.map(find).filter(Boolean))
+    const recent = createMemo(() => store.recent.map(find).filter(Boolean) as LocalModel[])
 
     return {
       list,
       current,
       recent,
       set(model: ModelKey | undefined, options?: { recent?: boolean }) {
+        const fb = fallback()
+        const key = model ?? fb
+        if (!key) return
         batch(() => {
-          setStore("model", agent.current().name, model ?? fallback())
+          const a = agent.current()
+          if (a) setStore("model", a.name, key)
           if (options?.recent && model) {
             const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
             if (uniq.length > 5) uniq.pop()
@@ -170,7 +189,8 @@ function init() {
 
     const load = async (path: string) => {
       const relativePath = relative(path)
-      sdk.file.read({ query: { path: relativePath } }).then((x) => {
+      try {
+        const x = await sdk.client.file.read({ query: { path: relativePath } })
         setStore(
           "node",
           relativePath,
@@ -179,7 +199,9 @@ function init() {
             draft.content = x.data
           }),
         )
-      })
+      } catch (err) {
+        console.error(`Failed to load file ${relativePath}:`, err)
+      }
     }
 
     const fetch = async (path: string) => {
@@ -210,7 +232,8 @@ function init() {
     }
 
     const list = async (path: string) => {
-      return sdk.file.list({ query: { path: path + "/" } }).then((x) => {
+      try {
+        const x = await sdk.client.file.list({ query: { path: path + "/" } })
         setStore(
           "node",
           produce((draft) => {
@@ -220,10 +243,16 @@ function init() {
             })
           }),
         )
-      })
+      } catch (err) {
+        console.error(`Failed to list directory ${path}:`, err)
+      }
     }
 
-    const search = (query: string) => sdk.find.files({ query: { query } }).then((x) => x.data!)
+    const search = (query: string) =>
+      sdk.client.find
+        .files({ query: { query } })
+        .then((x) => x.data!)
+        .catch(() => [] as string[])
 
     const bus = useEvent()
     bus.listen((event) => {
@@ -235,7 +264,6 @@ function init() {
               case "read":
                 break
               case "edit":
-                // load(part.state.input["filePath"] as string)
                 break
               default:
                 break
@@ -259,9 +287,9 @@ function init() {
       open,
       load,
       close(path: string) {
+        const index = store.opened.findIndex((f) => f === path)
         setStore("opened", (opened) => opened.filter((x) => x !== path))
         if (store.active === path) {
-          const index = store.opened.findIndex((f) => f === path)
           const previous = store.opened[Math.max(0, index - 1)]
           setStore("active", previous)
         }
@@ -342,16 +370,15 @@ function init() {
       rightWidth: number
     }>({
       rightPane: false,
-      leftWidth: 200, // Default 50 * 4px (w-50 = 12.5rem = 200px)
-      rightWidth: 320, // Default 80 * 4px (w-80 = 20rem = 320px)
+      leftWidth: 200,
+      rightWidth: 320,
     })
 
-    const value = localStorage.getItem("layout")
-    if (value) {
-      const v = JSON.parse(value)
-      if (typeof v?.rightPane === "boolean") setStore("rightPane", v.rightPane)
-      if (typeof v?.leftWidth === "number") setStore("leftWidth", Math.max(150, Math.min(400, v.leftWidth)))
-      if (typeof v?.rightWidth === "number") setStore("rightWidth", Math.max(200, Math.min(500, v.rightWidth)))
+    const saved = safeParseJSON<Record<string, unknown> | null>(localStorage.getItem("layout"), null)
+    if (saved) {
+      if (typeof saved.rightPane === "boolean") setStore("rightPane", saved.rightPane)
+      if (typeof saved.leftWidth === "number") setStore("leftWidth", Math.max(150, Math.min(400, saved.leftWidth)))
+      if (typeof saved.rightWidth === "number") setStore("rightWidth", Math.max(200, Math.min(500, saved.rightWidth)))
     }
     createEffect(() => {
       localStorage.setItem("layout", JSON.stringify(store))

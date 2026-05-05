@@ -198,15 +198,20 @@ export default function Page() {
 
     const session =
       (local.layout.rightPane() ? local.session.active() : undefined) ??
-      (await sdk.session.create().then((x) => x.data!))
-    local.session.setActive(session!.id)
+      (await sdk.client.session.create().then((x) => x.data!))
+    if (!session) return
+    local.session.setActive(session.id)
     local.layout.openRightPane()
 
-    await sdk.session.prompt({
-      path: { id: session!.id },
+    const currentAgent = local.agent.current()
+    const currentModel = local.model.current()
+    if (!currentAgent || !currentModel) return
+
+    await sdk.client.session.prompt({
+      path: { id: session.id },
       body: {
-        agent: local.agent.current()!.name,
-        model: { modelID: local.model.current()!.id, providerID: local.model.current()!.provider.id },
+        agent: currentAgent.name,
+        model: { modelID: currentModel.id, providerID: currentModel.provider.id },
         parts: [
           {
             type: "text",
@@ -625,7 +630,7 @@ export default function Page() {
                 <div class="flex gap-2 items-center">
                   <Select
                     options={local.agent.list().map((a) => a.name)}
-                    current={local.agent.current().name}
+                    current={local.agent.current()?.name}
                     onSelect={local.agent.set}
                     class="uppercase text-text-muted"
                   />
