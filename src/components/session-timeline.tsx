@@ -299,10 +299,11 @@ export default function SessionTimeline(props: { session: string; class?: string
   onMount(() => sync.session.sync(props.session))
   const messages = createMemo(() => sync.data.message[props.session] ?? [])
   const working = createMemo(() => {
-    const last = messages()[messages().length - 1]
-    if (!last) return false
+    const msgs = messages()
+    if (msgs.length === 0) return false
+    const last = msgs[msgs.length - 1]
     if (last.role === "user") return true
-    return !last.time.completed
+    return !last.time?.completed
   })
 
   const getScrollParent = (el: HTMLElement | null): HTMLElement | undefined => {

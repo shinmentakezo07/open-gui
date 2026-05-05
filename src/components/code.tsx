@@ -21,16 +21,19 @@ export function Code(props: Props) {
   let container: HTMLDivElement | undefined
   let isProgrammaticSelection = false
 
-  const [html] = createResource(async () => {
-    if (!highlighter.getLoadedLanguages().includes(lang())) {
-      await highlighter.loadLanguage(lang() as BundledLanguage)
-    }
-    return highlighter.codeToHtml(local.code || "", {
-      lang: lang() && lang() in bundledLanguages ? lang() : "text",
-      theme: "opencode",
-      transformers: [transformerUnifiedDiff(), transformerDiffGroups()],
-    }) as string
-  })
+  const [html] = createResource(
+    () => ({ code: local.code, path: local.path, lang: lang() }),
+    async ({ lang }) => {
+      if (!highlighter.getLoadedLanguages().includes(lang)) {
+        await highlighter.loadLanguage(lang as BundledLanguage)
+      }
+      return highlighter.codeToHtml(local.code || "", {
+        lang: lang && lang in bundledLanguages ? lang : "text",
+        theme: "opencode",
+        transformers: [transformerUnifiedDiff(), transformerDiffGroups()],
+      }) as string
+    },
+  )
 
   onMount(() => {
     if (!container) return

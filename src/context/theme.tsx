@@ -37,23 +37,21 @@ export const ThemeProvider: ParentComponent<ThemeProviderProps> = (props) => {
   const [theme, setThemeSignal] = createSignal<string | undefined>()
   const [isDark, setIsDark] = createSignal(props.defaultDarkMode ?? false)
 
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "t" && event.ctrlKey) {
-      event.preventDefault()
-      const current = theme()
-      if (!current) return
-      const index = themes.indexOf(current)
-      const next = themes[(index + 1) % themes.length]
-      setTheme(next)
-    }
-  }
-
   onMount(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "t" && event.ctrlKey) {
+        event.preventDefault()
+        const current = theme()
+        if (!current) return
+        const index = themes.indexOf(current)
+        const next = themes[(index + 1) % themes.length]
+        setTheme(next)
+      }
+    }
     window.addEventListener("keydown", handleKeyDown)
-  })
-
-  onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDown)
+    onCleanup(() => {
+      window.removeEventListener("keydown", handleKeyDown)
+    })
   })
 
   onMount(() => {
